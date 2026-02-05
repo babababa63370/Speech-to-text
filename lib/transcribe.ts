@@ -7,7 +7,7 @@ export async function transcribeAudio(
 ): Promise<string> {
   const baseUrl = getApiUrl();
 
-  const response = await fetch(`${baseUrl}api/transcribe/stream`, {
+    const response = await fetch(`${baseUrl}api/conversations/1/messages`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

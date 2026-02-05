@@ -48,7 +48,7 @@ async function readFileAsBase64(uri: string): Promise<string> {
     });
   } else {
     return FileSystem.readAsStringAsync(uri, {
-      encoding: FileSystem.EncodingType.Base64,
+      encoding: "base64",
     });
   }
 }
