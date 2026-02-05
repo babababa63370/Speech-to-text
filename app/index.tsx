@@ -13,7 +13,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons, Feather } from "@expo/vector-icons";
-import { useAudioRecorder, AudioModule, RecordingPresets } from "expo-audio";
+import { useAudioRecorder, useAudioRecorderState, AudioModule, RecordingPresets } from "expo-audio";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
 import * as Haptics from "expo-haptics";
@@ -65,7 +65,9 @@ export default function HomeScreen() {
   const [permissionGranted, setPermissionGranted] = useState<boolean | null>(null);
 
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorderState = useAudioRecorderState(audioRecorder);
   const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingTranscriptionRef = useRef<boolean>(false);
 
   const { addTranscription } = useTranscriptions();
 
@@ -111,6 +113,7 @@ export default function HomeScreen() {
 
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
+      await audioRecorder.prepareToRecordAsync();
       audioRecorder.record();
 
       setRecordingState("recording");
@@ -127,26 +130,13 @@ export default function HomeScreen() {
     }
   };
 
-  const stopRecording = async () => {
+  const processRecording = useCallback(async (uri: string, duration: number) => {
     try {
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      stopPulse();
-
-      if (durationIntervalRef.current) {
-        clearInterval(durationIntervalRef.current);
-        durationIntervalRef.current = null;
-      }
-
-      setRecordingState("processing");
-
-      await audioRecorder.stop();
-      const uri = audioRecorder.uri;
-
-      if (!uri) {
-        throw new Error("No recording URI");
-      }
-
       const base64 = await readFileAsBase64(uri);
+      
+      if (!base64 || base64.length === 0) {
+        throw new Error("Recording file is empty. Please try recording again.");
+      }
 
       const text = await transcribeAudio(base64, (progress) => {
         setTranscribedText(progress);
@@ -157,16 +147,53 @@ export default function HomeScreen() {
       const transcription = await addTranscription({
         text,
         source: "recording",
-        duration: recordingDuration,
+        duration,
       });
 
       setRecordingState("idle");
+      pendingTranscriptionRef.current = false;
       
       router.push(`/transcription/${transcription.id}`);
     } catch (error) {
       console.error("Failed to transcribe:", error);
       setRecordingState("idle");
-      Alert.alert("Error", "Failed to transcribe audio");
+      pendingTranscriptionRef.current = false;
+      const message = error instanceof Error ? error.message : "Failed to transcribe audio";
+      Alert.alert("Error", message);
+    }
+  }, [addTranscription]);
+
+  const stopRecording = async () => {
+    try {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      stopPulse();
+
+      if (durationIntervalRef.current) {
+        clearInterval(durationIntervalRef.current);
+        durationIntervalRef.current = null;
+      }
+
+      const currentDuration = recordingDuration;
+      setRecordingState("processing");
+      pendingTranscriptionRef.current = true;
+
+      await audioRecorder.stop();
+      
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      const uri = audioRecorder.uri;
+
+      if (uri) {
+        await processRecording(uri, currentDuration);
+      } else {
+        throw new Error("No recording URI available. Please try recording again.");
+      }
+    } catch (error) {
+      console.error("Failed to transcribe:", error);
+      setRecordingState("idle");
+      pendingTranscriptionRef.current = false;
+      const message = error instanceof Error ? error.message : "Failed to transcribe audio";
+      Alert.alert("Error", message);
     }
   };
 
