@@ -13,7 +13,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons, Feather } from "@expo/vector-icons";
-import { Audio } from "expo-av";
+import { useAudioRecorder, AudioModule, RecordingPresets } from "expo-audio";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
 import * as Haptics from "expo-haptics";
@@ -32,6 +32,27 @@ import { transcribeAudio } from "@/lib/transcribe";
 
 type RecordingState = "idle" | "recording" | "processing";
 
+async function readFileAsBase64(uri: string): Promise<string> {
+  if (Platform.OS === "web") {
+    const response = await fetch(uri);
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        const base64 = result.split(",")[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } else {
+    return FileSystem.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+  }
+}
+
 export default function HomeScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
@@ -43,7 +64,7 @@ export default function HomeScreen() {
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [permissionGranted, setPermissionGranted] = useState<boolean | null>(null);
 
-  const recordingRef = useRef<Audio.Recording | null>(null);
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const { addTranscription } = useTranscriptions();
@@ -70,9 +91,9 @@ export default function HomeScreen() {
   };
 
   const requestPermission = async () => {
-    const { status } = await Audio.requestPermissionsAsync();
-    setPermissionGranted(status === "granted");
-    return status === "granted";
+    const status = await AudioModule.requestRecordingPermissionsAsync();
+    setPermissionGranted(status.granted);
+    return status.granted;
   };
 
   const startRecording = async () => {
@@ -90,16 +111,8 @@ export default function HomeScreen() {
 
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
+      audioRecorder.record();
 
-      const recording = new Audio.Recording();
-      await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-      await recording.startAsync();
-
-      recordingRef.current = recording;
       setRecordingState("recording");
       setRecordingDuration(0);
       setTranscribedText("");
@@ -116,8 +129,6 @@ export default function HomeScreen() {
 
   const stopRecording = async () => {
     try {
-      if (!recordingRef.current) return;
-
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       stopPulse();
 
@@ -128,17 +139,14 @@ export default function HomeScreen() {
 
       setRecordingState("processing");
 
-      await recordingRef.current.stopAndUnloadAsync();
-      const uri = recordingRef.current.getURI();
-      recordingRef.current = null;
+      await audioRecorder.stop();
+      const uri = audioRecorder.uri;
 
       if (!uri) {
         throw new Error("No recording URI");
       }
 
-      const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
+      const base64 = await readFileAsBase64(uri);
 
       const text = await transcribeAudio(base64, (progress) => {
         setTranscribedText(progress);
@@ -186,9 +194,7 @@ export default function HomeScreen() {
       setRecordingState("processing");
       setTranscribedText("");
 
-      const base64 = await FileSystem.readAsStringAsync(file.uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
+      const base64 = await readFileAsBase64(file.uri);
 
       const text = await transcribeAudio(base64, (progress) => {
         setTranscribedText(progress);
