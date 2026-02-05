@@ -53,15 +53,21 @@ function setupCors(app: express.Application) {
 }
 
 function setupBodyParsing(app: express.Application) {
+  // On augmente la limite pour le JSON (votre audio en Base64)
   app.use(
     express.json({
+      limit: "50mb", // <--- AJOUTEZ CETTE LIGNE
       verify: (req, _res, buf) => {
         req.rawBody = buf;
       },
     }),
   );
 
-  app.use(express.urlencoded({ extended: false }));
+  // On augmente aussi la limite pour les formulaires encodés en URL
+  app.use(express.urlencoded({ 
+    limit: "50mb", // <--- AJOUTEZ CETTE LIGNE
+    extended: false 
+  }));
 }
 
 function setupRequestLogging(app: express.Application) {
