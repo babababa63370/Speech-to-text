@@ -60,12 +60,14 @@ export default function TranscriptionDetailScreen() {
   };
 
   const handleCopy = async () => {
+    if (!transcription.text) return;
     await Clipboard.setStringAsync(transcription.text);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     Alert.alert("Copied", "Text copied to clipboard");
   };
 
   const handleShare = async () => {
+    if (!transcription.text) return;
     try {
       await Share.share({
         message: transcription.text,
@@ -95,7 +97,7 @@ export default function TranscriptionDetailScreen() {
     );
   };
 
-  const wordCount = transcription.text.split(/\s+/).filter(Boolean).length;
+  const wordCount = transcription.text?.split(/\s+/).filter(Boolean).length || 0;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -165,7 +167,7 @@ export default function TranscriptionDetailScreen() {
             <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
             <View style={styles.stat}>
               <Text style={[styles.statValue, { color: colors.text, fontFamily: "Inter_600SemiBold" }]}>
-                {transcription.text.length}
+                {transcription.text?.length || 0}
               </Text>
               <Text style={[styles.statLabel, { color: colors.textSecondary, fontFamily: "Inter_400Regular" }]}>
                 characters
@@ -192,7 +194,7 @@ export default function TranscriptionDetailScreen() {
             style={[styles.transcriptionText, { color: colors.text, fontFamily: "Inter_400Regular" }]}
             selectable
           >
-            {transcription.text}
+            {transcription.text || "No text available"}
           </Text>
         </View>
       </ScrollView>
