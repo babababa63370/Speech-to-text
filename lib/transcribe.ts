@@ -17,7 +17,11 @@ export async function transcribeAudio(
   });
 
   if (!response.ok) {
-    throw new Error("Transcription failed");
+    // On récupère le texte ou le JSON renvoyé par le serveur
+    const errorBody = await response.text(); 
+    console.error("Détails de l'erreur serveur :", errorBody);
+
+    throw new Error(`La transcription a échoué (Statut ${response.status}) : ${errorBody}`);
   }
 
   const reader = response.body?.getReader();
